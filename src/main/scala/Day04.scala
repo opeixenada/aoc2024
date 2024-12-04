@@ -1,38 +1,31 @@
 import Util.readFile
 
-import scala.annotation.tailrec
-import scala.collection.immutable.::
-
 @main def day04(): Unit = {
 
-  val input: IndexedSeq[IndexedSeq[Char]] = readFile("resources/day04").map(_.toCharArray.toIndexedSeq).toIndexedSeq
+  val input: IndexedSeq[IndexedSeq[Char]] = readFile("resources/day04").map(_.toIndexedSeq).toIndexedSeq
 
   // Part 1
 
-  val result1 = Seq(
-    input,
-    input.head.indices.map { i => input.map(_(i)) },
-    getDiagonals(input),
-    getDiagonals(input.reverse)
-  ).flatMap { _.map(_.toList).map(countXmasBothDirections) }.sum
+  val result1 = getAllDirections(input).foldLeft(0) { case (acc, xs) => acc + countXmas(xs) }
 
   println(result1)
 
   // Part 2
 
-  def checkDiagonal(direction: Int, i: Int, j: Int): Boolean = {
-    def check(lastLetter: Char): Boolean =
-      (j + 2) < input.length &&
-        (i + 2 * direction) > -1 &&
-        (i + 2 * direction) < input.head.length &&
-        input(j + 1)(i + direction) == 'A' &&
-        input(j + 2)(i + 2 * direction) == lastLetter
+  def isInBounds(row: Int, col: Int): Boolean =
+    row >= 0 && row < input.length && col >= 0 && col < input.head.length
 
-    i > -1 && i < input.head.length && j > -1 && j < input.length && (input(j)(i) match
-      case 'M' => check('S')
-      case 'S' => check('M')
+  def checkDiagonal(direction: Int, i: Int, j: Int): Boolean = {
+    def checkPattern(endChar: Char): Boolean =
+      isInBounds(j + 2, i + (2 * direction)) &&
+        input(j + 1)(i + direction) == 'A' &&
+        input(j + 2)(i + (2 * direction)) == endChar
+
+    isInBounds(j, i) && (input(j)(i) match {
+      case 'M' => checkPattern('S')
+      case 'S' => checkPattern('M')
       case _   => false
-    )
+    })
   }
 
   val result2: Int = input.indices.map { j =>
@@ -44,21 +37,24 @@ import scala.collection.immutable.::
   println(result2)
 }
 
-def getDiagonals(input: Seq[IndexedSeq[Char]]): Iterable[Iterable[Char]] =
-  (0 until input.length + input.head.length).map { i =>
-    input.zipWithIndex.flatMap { case (line, j) =>
-      if (i - j > -1 && i - j < input.head.length) Some(line(i - j)) else None
+def getAllDirections(grid: Seq[Seq[Char]]): Iterable[List[Char]] =
+  (grid ++ grid.head.indices.map(i => grid.map(_(i))) ++ getDiagonals(grid) ++ getDiagonals(grid.reverse))
+    .flatMap { x =>
+      Seq(x, x.reverse)
     }
+    .map(_.toList)
+
+def getDiagonals(input: Seq[Seq[Char]]): Iterable[Seq[Char]] =
+  (0 until input.length + input.head.length).map { i =>
+    for {
+      (line, j) <- input.zipWithIndex
+      if i - j >= 0 && i - j < input.head.length
+    } yield line(i - j)
   }
 
-def countXmasBothDirections(s: List[Char]): Int =
-  Seq(s, s.reverse).map(countXmas(_)).sum
-
-@tailrec
-def countXmas(s: List[Char], stack: String = "", count: Int = 0): Int = (s, stack) match
-  case (Nil, _)             => count
-  case ('X' :: tail, _)     => countXmas(tail, "X", count)
-  case ('M' :: tail, "X")   => countXmas(tail, "XM", count)
-  case ('A' :: tail, "XM")  => countXmas(tail, "XMA", count)
-  case ('S' :: tail, "XMA") => countXmas(tail, "", count + 1)
-  case (x :: tail, _)       => countXmas(tail, "", count)
+def countXmas(chars: List[Char]): Int = {
+  val pattern = "XMAS".toList
+  chars
+    .sliding(pattern.length)
+    .count(_ == pattern)
+}
