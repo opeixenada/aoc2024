@@ -32,7 +32,9 @@ import scala.annotation.tailrec
       case next if obstacles.contains(next) => walk(xy, turnRight(direction), seen)
       case next                             => walk(next, direction, seen + xy)
 
-  val result1 = walk(start).size
+  val trajectory = walk(start)
+
+  val result1 = trajectory.size
 
   println(result1)
 
@@ -51,7 +53,7 @@ import scala.annotation.tailrec
         isLoop(xy, turnRight(direction), seen + (xy -> direction))(obstacle)
       case next => isLoop(next, direction, seen + (xy -> direction))(obstacle)
 
-  val result2: Int = getSymbols('.').count(isLoop(start))
+  val result2: Int = trajectory.tail.count(isLoop(start))
 
   println(result2)
 }

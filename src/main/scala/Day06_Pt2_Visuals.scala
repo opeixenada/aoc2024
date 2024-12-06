@@ -124,6 +124,7 @@ import java.awt._
       currentObstacle = obstacle
       seenPositions = seen.map(_._1)
       repaint()
+      Thread.sleep(1)
     }
 
     def startNewAttempt(obstacle: (Int, Int)): Unit = {
@@ -165,6 +166,13 @@ import java.awt._
     (xy._1 + direction._1, xy._2 + direction._2)
 
   @tailrec
+  def walk(xy: (Int, Int), direction: (Int, Int) = (-1, 0), seen: Set[(Int, Int)] = Set.empty): Set[(Int, Int)] =
+    move(xy, direction) match
+      case next if oob(next) => seen + xy
+      case next if obstacles.contains(next) => walk(xy, turnRight(direction), seen)
+      case next => walk(next, direction, seen + xy)
+
+  @tailrec
   def isLoop(
       xy: (Int, Int),
       direction: (Int, Int) = (-1, 0),
@@ -179,7 +187,7 @@ import java.awt._
       case next                                          => isLoop(next, direction, seen + (xy -> direction))(obstacle)
   }
 
-  val result = getSymbols('.').count { obstacle =>
+  val result = walk(start).tail.count { obstacle =>
     gridPanel.startNewAttempt(obstacle)
     val isSuccessful = isLoop(start)(obstacle)
     if (isSuccessful) gridPanel.markSuccessful()
