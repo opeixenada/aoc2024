@@ -1,7 +1,8 @@
 import Util.readFile
+
+import java.awt.*
+import javax.swing.*
 import scala.annotation.tailrec
-import javax.swing._
-import java.awt._
 
 @main def day06_2_visual(): Unit = {
   val input = readFile("resources/day06").map(_.toIndexedSeq).toIndexedSeq
@@ -40,6 +41,23 @@ import java.awt._
   val start: (Int, Int) = getSymbols('^').head
   val obstacles: Set[(Int, Int)] = getSymbols('#').toSet
 
+  def move(xy: (Int, Int), direction: (Int, Int)): (Int, Int) =
+    (xy._1 + direction._1, xy._2 + direction._2)
+
+  def oob(xy: (Int, Int)): Boolean = {
+    val (x, y) = xy
+    x >= input.length || x < 0 || y >= input.head.length || y < 0
+  }
+
+  @tailrec
+  def walk(xy: (Int, Int), direction: (Int, Int) = (-1, 0), seen: Set[(Int, Int)] = Set.empty): Set[(Int, Int)] =
+    move(xy, direction) match
+      case next if oob(next)                => seen + xy
+      case next if obstacles.contains(next) => walk(xy, turnRight(direction), seen)
+      case next                             => walk(next, direction, seen + xy)
+
+  val trajectory = walk(start)
+
   class GridPanel extends JPanel {
     var currentPos: (Int, Int) = (0, 0)
     var currentDir: (Int, Int) = (-1, 0)
@@ -47,7 +65,7 @@ import java.awt._
     var seenPositions: Set[(Int, Int)] = Set.empty
     var successCount = 0
     var attemptCount = 0
-    val totalAttempts = getSymbols('.').size
+    val totalAttempts: Int = trajectory.size
 
     // Calculate grid dimensions
     private val gridWidth = input.head.length * cellSize + (padding * 2)
@@ -151,27 +169,6 @@ import java.awt._
   frame.setLocationRelativeTo(null)
   frame.setVisible(true)
 
-  def turnRight(direction: (Int, Int)): (Int, Int) = direction match
-    case (-1, 0) => (0, 1)
-    case (1, 0)  => (0, -1)
-    case (0, 1)  => (1, 0)
-    case _       => (-1, 0)
-
-  def oob(xy: (Int, Int)): Boolean = {
-    val (x, y) = xy
-    x >= input.length || x < 0 || y >= input.head.length || y < 0
-  }
-
-  def move(xy: (Int, Int), direction: (Int, Int)): (Int, Int) =
-    (xy._1 + direction._1, xy._2 + direction._2)
-
-  @tailrec
-  def walk(xy: (Int, Int), direction: (Int, Int) = (-1, 0), seen: Set[(Int, Int)] = Set.empty): Set[(Int, Int)] =
-    move(xy, direction) match
-      case next if oob(next) => seen + xy
-      case next if obstacles.contains(next) => walk(xy, turnRight(direction), seen)
-      case next => walk(next, direction, seen + xy)
-
   @tailrec
   def isLoop(
       xy: (Int, Int),
@@ -181,13 +178,14 @@ import java.awt._
     gridPanel.update(xy, direction, obstacle, seen)
 
     move(xy, direction) match
-      case next if oob(next)                             => false
-      case next if seen.contains(next -> direction)      => true
-      case next if (obstacles + obstacle).contains(next) => isLoop(xy, turnRight(direction), seen)(obstacle)
-      case next                                          => isLoop(next, direction, seen + (xy -> direction))(obstacle)
+      case next if oob(next)                        => false
+      case next if seen.contains(next -> direction) => true
+      case next if (obstacles + obstacle).contains(next) =>
+        isLoop(xy, turnRight(direction), seen + (xy -> direction))(obstacle)
+      case next => isLoop(next, direction, seen + (xy -> direction))(obstacle)
   }
 
-  val result = walk(start).tail.count { obstacle =>
+  val result = trajectory.tail.count { obstacle =>
     gridPanel.startNewAttempt(obstacle)
     val isSuccessful = isLoop(start)(obstacle)
     if (isSuccessful) gridPanel.markSuccessful()
