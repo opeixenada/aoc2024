@@ -1,6 +1,5 @@
 import Util.readFile
 
-import scala.None
 import scala.annotation.tailrec
 import scala.math.BigInt
 
@@ -26,13 +25,14 @@ import scala.math.BigInt
       s.rest match
         case Nil if s.x == target => true
         case Nil                  => explore(operations)(target, tail)
+        case _ if s.x > target    => explore(operations)(target, tail)
         case a :: as =>
-          val newStates = operations.flatMap { operation =>
-            val b = operation(s.x, a)
-            if (b > target) None
-            else Some(State(b, as))
-          }
-          explore(operations)(target, newStates ::: tail)
+          explore(operations)(
+            target,
+            operations.map { operation =>
+              State(operation(s.x, a), as)
+            } ::: tail
+          )
 
   def isGood(operations: List[Operation])(result: BigInt, xs: List[BigInt]): Boolean =
     explore(operations)(result, List(State(xs.head, xs.tail)))
