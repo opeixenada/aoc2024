@@ -1,18 +1,51 @@
 import Util.readFile
 
+import scala.None
+import scala.annotation.tailrec
+import scala.math.BigInt
+
 @main def day07(): Unit = {
 
-  val input = readFile("resources/day07")
+  val input: Iterable[(BigInt, List[BigInt])] = readFile("resources/day07").map { s =>
+    val arr = s.split(": ")
+    BigInt(arr.head) -> arr.last.split(' ').map(BigInt(_)).toList
+  }
+
+  case class State(x: BigInt, rest: List[BigInt])
+
+  type Operation = (BigInt, BigInt) => BigInt
+
+  val sum: Operation = (x, y) => x + y
+  val prod: Operation = (x, y) => x * y
+  val concat: Operation = (x, y) => BigInt(x.toString + y.toString)
+
+  @tailrec
+  def explore(operations: List[Operation])(target: BigInt, states: List[State]): Boolean = states match
+    case Nil => false
+    case s :: tail =>
+      s.rest match
+        case Nil if s.x == target => true
+        case Nil                  => explore(operations)(target, tail)
+        case a :: as =>
+          val newStates = operations.flatMap { operation =>
+            val b = operation(s.x, a)
+            if (b > target) None
+            else Some(State(b, as))
+          }
+          explore(operations)(target, newStates ::: tail)
+
+  def isGood(operations: List[Operation])(result: BigInt, xs: List[BigInt]): Boolean =
+    explore(operations)(result, List(State(xs.head, xs.tail)))
 
   // Part 1
 
-  val result1 = "foo"
+  val result1 = input.filter(isGood(List(sum, prod))).map(_._1).sum
 
   println(result1)
 
   // Part 2
 
-  val result2 = "foo"
+  val result2 = input.filter(isGood(List(sum, prod, concat))).map(_._1).sum
 
   println(result2)
 }
