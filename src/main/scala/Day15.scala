@@ -1,18 +1,13 @@
 import Util.readFile
 
 @main def day15(): Unit = {
-
   val input = readFile("resources/day15")
+  val solver = Foo15(input)
+  println(solver.solvePart1())
+  println(solver.solvePart2())
+}
 
-  // Part 1
-
-  val result1 = "foo"
-
-  println(result1)
-
-  // Part 2
-
-  val result2 = "foo"
-
-  println(result2)
+class Foo15(input: List[String]) {
+  def solvePart1(): Any = ???
+  def solvePart2(): Any = ???
 }
