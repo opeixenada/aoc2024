@@ -9,86 +9,96 @@ import Util.readFile
 }
 
 object GardenGroups {
+
+  /** Single plot with its type (character) and coordinates. */
   private type Plot = (Char, (Int, Int))
+
+  /** Region of connected plots with the same type. */
   private type Region = (Char, List[(Int, Int)])
 
-  private def isBordering(cs1: (Int, Int))(cs2: (Int, Int)): Boolean = {
-    val (x1, y1) = cs1
-    val (x2, y2) = cs2
-    (x1 == x2 && (y1 - y2).abs == 1) || (y1 == y2 && (x1 - x2).abs == 1)
-  }
+  /** Coordinate in 2D space. */
+  private type Coordinate = (Int, Int)
 
+  /** List of cardinal directions for adjacent plot checking. */
   private val directions = List((1, 0), (-1, 0), (0, 1), (0, -1))
 
-  private def isClear(cs: (Int, Int), css: List[(Int, Int)])(direction: (Int, Int)): Boolean =
-    !css.contains((cs._1 + direction._1) -> (cs._2 + direction._2))
+  /** Determines if two coordinates are bordering each other. */
+  private def isBordering(p1: Coordinate)(p2: Coordinate): Boolean = {
+    val dx = (p1._1 - p2._1).abs
+    val dy = (p1._2 - p2._2).abs
+    (dx == 1 && dy == 0) || (dx == 0 && dy == 1)
+  }
 
-  private def expandMap(map: List[Region], plot: Plot): List[(Char, List[(Int, Int)])] = {
-    val (ch, cs) = plot
-    (ch -> List(cs)) :: map.map {
-      case (ch1, coordinates) if ch == ch1 && coordinates.exists(isBordering(cs)) => ch -> (cs :: coordinates)
-      case other                                                                  => other
+  /** Expands the map by adding a new plot and merging it with any adjacent matching regions. */
+  private def expand(map: List[Region], plot: Plot): List[Region] = {
+    val (char, coord) = plot
+
+    (char -> List(coord)) :: map.map {
+      case (ch, coords) if ch == char && coords.exists(isBordering(coord)) => ch -> (coord :: coords)
+      case other                                                           => other
     }
   }
 
-  private def containsPlot(plot: Plot)(region: Region) = plot._1 == region._1 && region._2.contains(plot._2)
-
-  private def mergePlots(regions: List[Region]): Region = regions.head._1 -> regions.flatMap(_._2).distinct
-
-  private def reduceMap(map: List[Region], plot: Plot): List[Region] =
-    mergePlots(map.filter(containsPlot(plot))) :: map.filterNot(containsPlot(plot))
-
-  val getPerimeter: List[(Int, Int)] => Int = { coordinates =>
-    coordinates.map { cs =>
-      directions.count(isClear(cs, coordinates))
-    }.sum
+  /** Reduces the map by merging overlapping regions of the same type. */
+  private def reduce(map: List[Region], plot: Plot): List[Region] = {
+    val matching = map.filter(r => r._1 == plot._1 && r._2.contains(plot._2))
+    val merged = matching.head._1 -> matching.flatMap(_._2).distinct
+    merged :: map.filterNot(r => r._1 == plot._1 && r._2.contains(plot._2))
   }
 
-  val getSides: List[(Int, Int)] => Int = { plotsCoordinates =>
-
-    def getOuterEdges(xs: List[(Int, Int, Int)]) = xs
-      .groupBy { case (a, b, _) => (a, b) }
-      .filter(_._2.size == 1)
-      .values
-      .flatMap(_.headOption)
-      .toList
-
-    def countDirectedSides(xs: List[(Int, Int, Int)]): Int = xs
-      .groupBy { case (a, b, direction) => (b, direction) }
-      .map { (k, v) =>
-        val ys = v.map(_._1).sorted
-
-        val count = ys
-          .zip(ys.tail)
-          .count { (x, y) => (y - x) != 1 } + 1
-
-        count
+  /** Calculates the perimeter of a list of coordinates. */
+  val getPerimeter: List[Coordinate] => Int = coords =>
+    coords.map { coord =>
+      directions.count { case (dx, dy) =>
+        !coords.contains((coord._1 + dx, coord._2 + dy))
       }
-      .sum
+    }.sum
 
-    def countSides(f: ((Int, Int)) => List[(Int, Int, Int)]): Int = countDirectedSides(
-      getOuterEdges(plotsCoordinates.flatMap(f))
-    )
+  /** Calculates the number of distinct sides in a list of coordinates.
+    *
+    * This function analyzes both horizontal and vertical edges to determine the total number of distinct sides in the
+    * shape formed by the plots with the given coordinates.
+    */
+  val getSides: List[Coordinate] => Int = coords => {
 
-    countSides({ case (x, y) =>
-      List((x, y, 1), (x, y + 1, 0))
-    }) + countSides { case (x, y) =>
-      List((y, x, 1), (y, x + 1, 0))
+    /** Helper function to calculate edges in a given direction. */
+    def getEdges(toEdges: Coordinate => List[(Int, Int, Int)]) = {
+      val allEdges = coords.flatMap(toEdges)
+      val groupedEdges = allEdges.groupBy { case (a, b, _) => (a, b) }
+      val singleEdges = groupedEdges.filter(_._2.size == 1).values.flatten.toList
+
+      singleEdges
+        .groupBy { case (_, b, dir) => (b, dir) }
+        .map { case (_, edges) =>
+          val xs = edges.map(_._1).sorted
+          xs.zip(xs.tail).count { case (x, y) => y - x != 1 } + 1
+        }
+        .sum
     }
+
+    val horizontal = getEdges(coord => List((coord._1, coord._2, 1), (coord._1, coord._2 + 1, 0)))
+    val vertical = getEdges(coord => List((coord._2, coord._1, 1), (coord._2, coord._1 + 1, 0)))
+
+    horizontal + vertical
   }
 
-  private def getCost(f: List[(Int, Int)] => Int)(map: List[Region]): Int = map.map { case (_, coordinates) =>
-    coordinates.size * f(coordinates)
-  }.sum
+  /** Calculates the total cost for all regions using the provided cost function. */
+  private def getCost(f: List[Coordinate] => Int)(map: List[Region]): Int =
+    map.map { case (_, coords) => coords.size * f(coords) }.sum
 }
 
 class GardenGroups(input: List[String]) {
 
-  val regions: List[Region] = (for {
-    (s, x) <- input.zipWithIndex
-    (ch, y) <- s.zipWithIndex
-  } yield (ch, (x, y))).foldLeft(List.empty[Region]) { case (map, plot) =>
-    reduceMap(expandMap(map, plot), plot)
+  /** Regions parsed from the input. */
+  val regions: List[Region] = {
+    val plots = for {
+      (row, x) <- input.zipWithIndex
+      (char, y) <- row.zipWithIndex
+    } yield (char, (x, y))
+
+    plots.foldLeft(List.empty[Region]) { (map, plot) =>
+      reduce(expand(map, plot), plot)
+    }
   }
 
   def solvePart1(): Any = getCost(getPerimeter)(regions)
