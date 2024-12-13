@@ -1,4 +1,4 @@
-import ClawContraption.Machine
+import ClawContraption.{Machine, addition}
 import Util.readFile
 
 @main def day13(): Unit = {
@@ -12,14 +12,21 @@ object ClawContraption {
   private val aPrice = 3
   private val bPrice = 1
   private val maxCount = 100
+  private val addition = BigInt("10000000000000")
 
-  case class Machine(ax: Int, ay: Int, bx: Int, by: Int, px: Int, py: Int) {
-    def getMinTokens: Option[Int] = (for {
-      a <- 0 to 100
-      if (px - (a * ax)) % bx == 0
-      b = (px - (a * ax)) / bx
-      if py == a * ay + b * by
-    } yield (a * 3) + b).minOption
+  case class Machine(x_a: BigInt, y_a: BigInt, x_b: BigInt, y_b: BigInt, x: BigInt, y: BigInt) {
+
+    /** It's just two integer equations with two unknowns! Let's solve it arithmetically. */
+    def getMinTokens: Option[BigInt] = {
+      val checkA = (y * x_b - x * y_b) % (x_b * y_a - x_a * y_b)
+      val checkB = (y * x_a - x * y_a) % (y_b * x_a - x_b * y_a)
+
+      if (checkA == 0 && checkB == 0) {
+        val a = (y * x_b - x * y_b) / (x_b * y_a - x_a * y_b)
+        val b = (y * x_a - x * y_a) / (y_b * x_a - x_b * y_a)
+        Some(a * 3 + b)
+      } else None
+    }
   }
 }
 
@@ -31,5 +38,9 @@ class ClawContraption(input: List[String]) {
   }
 
   def solvePart1(): Any = machines.flatMap(_.getMinTokens).sum
-  def solvePart2(): Any = ???
+
+  def solvePart2(): Any = machines
+    .map { m => m.copy(x = m.x + addition, y = m.y + addition) }
+    .flatMap(_.getMinTokens)
+    .sum
 }
