@@ -33,7 +33,7 @@ object ClawContraption {
 class ClawContraption(input: List[String]) {
 
   private val machines: Iterable[Machine] = Util.splitBy(input, _.isBlank).map { m =>
-    val ns = "(\\d)+".r.findAllMatchIn(m.mkString("\n")).map(_.matched.toInt).toIndexedSeq
+    val ns = m.flatMap("(\\d)+".r.findAllMatchIn).map(_.matched.toInt)
     Machine(ns(0), ns(1), ns(2), ns(3), ns(4), ns(5))
   }
 
