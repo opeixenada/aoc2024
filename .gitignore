@@ -51,6 +51,7 @@ local.conf
 
 # Scala 3 specific
 .tasty
+.scala-build
 
 # sbt specific
 .bsp
