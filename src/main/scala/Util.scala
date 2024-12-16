@@ -27,4 +27,11 @@ object Util {
       case ys =>
         val element = ys.takeWhile(!splitCriterion(_))
         splitBy(xs.drop(element.length + 1), splitCriterion, acc.appended(element))
+
+  def coordinatesOf(ch: Char, xs: Iterable[String]): Iterable[(Int, Int)] =
+    for {
+      (row, y) <- xs.zipWithIndex
+      (character, x) <- row.zipWithIndex
+      if character == ch
+    } yield x -> y
 }
