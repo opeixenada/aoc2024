@@ -1,48 +1,41 @@
+import WarehouseWoes.*
 import org.scalatest.flatspec.AnyFlatSpec
 
 class WarehouseWoesTests extends AnyFlatSpec {
 
-  "rearrange" should "move the robot" in {
-    val input = "#..@....#"
-    val result = WarehouseWoes.rearrange(input)
-    val expected = "#...@...#"
+  "parseExpandedInput" should "expand the map" in {
+    val input =
+      """
+        |##########
+        |#..O..O.O#
+        |#......O.#
+        |#.OO..O.O#
+        |#..O@..O.#
+        |#O#..O...#
+        |#O..O..O.#
+        |#.OO.O.OO#
+        |#....O...#
+        |##########
+        |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result == expected)
+    val expected =
+      """
+        |####################
+        |##....[]....[]..[]##
+        |##............[]..##
+        |##..[][]....[]..[]##
+        |##....[]@.....[]..##
+        |##[]##....[]......##
+        |##[]....[]....[]..##
+        |##..[][]..[]..[][]##
+        |##........[]......##
+        |####################
+        |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
+
+    assert(parseExpandedInput(input)._2 == parseInput(expected)._2)
   }
 
-  it should "stop before a wall" in {
-    val input = "#..@#...#"
-    val result = WarehouseWoes.rearrange(input)
-    val expected = "#..@#...#"
-
-    assert(result == expected)
-  }
-
-  it should "move a single box" in {
-    val input = "#..@O...#"
-    val result = WarehouseWoes.rearrange(input)
-    val expected = "#...@O..#"
-
-    assert(result == expected)
-  }
-
-  it should "move many boxes" in {
-    val input = "#..@OOO...#"
-    val result = WarehouseWoes.rearrange(input)
-    val expected = "#...@OOO..#"
-
-    assert(result == expected)
-  }
-
-  it should "not move boxed into a wall" in {
-    val input = "#..@OOO#...#"
-    val result = WarehouseWoes.rearrange(input)
-    val expected = "#..@OOO#...#"
-
-    assert(result == expected)
-  }
-
-  "move" should "process >" in {
+  "move" should "process > for small boxes" in {
     val input =
       """
         |########
@@ -54,10 +47,6 @@ class WarehouseWoesTests extends AnyFlatSpec {
         |#......#
         |########
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
-
-    val solver = WarehouseWoes(input)
-
-    val result = WarehouseWoes.move(solver.robot -> solver.map, '>')
 
     val expectedMap =
       """
@@ -71,11 +60,13 @@ class WarehouseWoesTests extends AnyFlatSpec {
         |########
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result._1 == (3, 2))
-    assert(result._2 == WarehouseWoes(expectedMap).map)
+    val (map, _) = parseInput(input)
+    val result = move()(map, '>')
+
+    assert(result.map(_.mkString) == expectedMap)
   }
 
-  it should "process <" in {
+  it should "process < for small boxes" in {
     val input =
       """
         |########
@@ -87,10 +78,6 @@ class WarehouseWoesTests extends AnyFlatSpec {
         |#......#
         |########
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
-
-    val solver = WarehouseWoes(input)
-
-    val result = WarehouseWoes.move(solver.robot -> solver.map, '<')
 
     val expectedMap =
       """
@@ -104,12 +91,26 @@ class WarehouseWoesTests extends AnyFlatSpec {
         |########
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result._1 == (2, 2))
-    assert(result._2 == WarehouseWoes(expectedMap).map)
+    val (map, _) = parseInput(input)
+    val result = move()(map, '<')
+
+    assert(result.map(_.mkString) == expectedMap)
   }
 
-  it should "process v" in {
+  it should "process ^ for small boxes" in {
     val input =
+      """
+        |########
+        |#..O.O.#
+        |##..O..#
+        |#..@O..#
+        |#.#.O..#
+        |#...O..#
+        |#......#
+        |########
+        |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
+
+    val expectedMap =
       """
         |########
         |#..O.O.#
@@ -121,9 +122,24 @@ class WarehouseWoesTests extends AnyFlatSpec {
         |########
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    val solver = WarehouseWoes(input)
+    val (map, _) = parseInput(input)
+    val result = move()(map, '^')
 
-    val result = WarehouseWoes.move(solver.robot -> solver.map, 'v')
+    assert(result.map(_.mkString) == expectedMap)
+  }
+
+  it should "process v for small boxes" in {
+    val input =
+      """
+        |########
+        |#..O.O.#
+        |##.@O..#
+        |#...O..#
+        |#.#.O..#
+        |#...O..#
+        |#......#
+        |########
+        |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
     val expectedMap =
       """
@@ -137,79 +153,106 @@ class WarehouseWoesTests extends AnyFlatSpec {
         |########
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result._1 == (3, 3))
-    assert(result._2 == WarehouseWoes(expectedMap).map)
+    val (map, _) = parseInput(input)
+    val result = move()(map, 'v')
+
+    assert(result.map(_.mkString) == expectedMap)
   }
 
-  it should "process ^" in {
+  it should "process < for big boxes" in {
     val input =
       """
-        |########
-        |#..O.O.#
-        |##..O..#
-        |#..@O..#
-        |#.#.O..#
-        |#...O..#
-        |#......#
-        |########
+        |##############
+        |##......##..##
+        |##..........##
+        |##....[][]@.##
+        |##....[]....##
+        |##..........##
+        |##############
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    val solver = WarehouseWoes(input)
-
-    val result = WarehouseWoes.move(solver.robot -> solver.map, '^')
-
-    val expected =
+    val expectedMap =
       """
-        |########
-        |#..O.O.#
-        |##.@O..#
-        |#...O..#
-        |#.#.O..#
-        |#...O..#
-        |#......#
-        |########
+        |##############
+        |##......##..##
+        |##..........##
+        |##...[][]@..##
+        |##....[]....##
+        |##..........##
+        |##############
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result._1 == (3, 2))
-    assert(result._2 == WarehouseWoes(expected).map)
+    val (map, _) = parseInput(input)
+    val result = move(processLineForBigBoxes)(map, '<')
+
+    assert(result.map(_.mkString) == expectedMap)
   }
 
-  "transpose" should "turn verticals to horizontals" in {
+  it should "process ^ for big boxes" in {
     val input =
       """
-        |@BCD
-        |EFGH
+        |##############
+        |##......##..##
+        |##...[][]...##
+        |##....[]....##
+        |##.....@....##
+        |##..........##
+        |##############
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    val solver = WarehouseWoes(input)
-
-    val result = WarehouseWoes.transpose(solver.map)
-
-    val expected =
+    val expectedMap =
       """
-        |@E
-        |BF
-        |CG
-        |DH
+        |##############
+        |##......##..##
+        |##...[][]...##
+        |##....[]....##
+        |##.....@....##
+        |##..........##
+        |##############
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result == WarehouseWoes(expected).map)
+    val (map, _) = parseInput(input)
+    val result = move(processLineForBigBoxes)(map, '^')
+
+    assert(result.map(_.mkString) == expectedMap)
   }
 
-  "turnBack" should "restore warehouse" in {
+  it should "process > for big boxes" in {
     val input =
       """
-        |@BCD
-        |EFGH
+        |####################
+        |##[]..[]....[]..[]##
+        |##[]..........[]..##
+        |##.@[][]....[]..[]##
+        |##...[]....[].[]..##
+        |##..##....[]......##
+        |##...[].......[]..##
+        |##.....[]..[].[][]##
+        |##........[]......##
+        |####################
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    val solver = WarehouseWoes(input)
-    val result = WarehouseWoes.turnBack(WarehouseWoes.transpose(solver.map))
+    val expectedMap =
+      """
+        |####################
+        |##[]..[]....[]..[]##
+        |##[]..........[]..##
+        |##..@[][]...[]..[]##
+        |##...[]....[].[]..##
+        |##..##....[]......##
+        |##...[].......[]..##
+        |##.....[]..[].[][]##
+        |##........[]......##
+        |####################
+        |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result == solver.map)
+    val (map, _) = parseInput(input)
+    val result = move(processLineForBigBoxes)(map, '>')
+
+    assert(result.map(_.mkString) == expectedMap)
   }
 
-  "process" should "apply all instructions in case 1" in {
+  "process" should "apply all instructions for small boxes: case 1" in {
     val input =
       """|########
          |#..O.O.#
@@ -223,9 +266,6 @@ class WarehouseWoesTests extends AnyFlatSpec {
          |<^^>>>vv<v>>v<<
          |""".stripMargin.split('\n').toList
 
-    val solver = WarehouseWoes(input)
-    val result = WarehouseWoes.process(solver.robot, solver.map, solver.instructions)
-
     val expected =
       """
         |########
@@ -238,10 +278,12 @@ class WarehouseWoesTests extends AnyFlatSpec {
         |########
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result._2 == WarehouseWoes(expected).map)
+    val result = process(parseInput(input))
+
+    assert(result == parseInput(expected)._1)
   }
 
-  it should "apply all instructions in case 2" in {
+  it should "apply all instructions for small boxes: case 2" in {
     val input =
       """|##########
          |#..O..O.O#
@@ -266,9 +308,6 @@ class WarehouseWoesTests extends AnyFlatSpec {
          |v^^>>><<^^<>>^v^<v^vv<>v^<<>^<^v^v><^<<<><<^<v><v<>vv>>v><v^<vv<>v^<<^
          |""".stripMargin.split('\n').toList
 
-    val solver = WarehouseWoes(input)
-    val result = WarehouseWoes.process(solver.robot, solver.map, solver.instructions)
-
     val expected =
       """
         |##########
@@ -283,6 +322,82 @@ class WarehouseWoesTests extends AnyFlatSpec {
         |##########
         |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
 
-    assert(result._2 == WarehouseWoes(expected).map)
+    val result = process(parseInput(input))
+
+    assert(result == parseInput(expected)._1)
   }
+
+  it should "apply all instructions for big boxes: case 1" in {
+    val input =
+      """|#######
+         |#...#.#
+         |#.....#
+         |#..OO@#
+         |#..O..#
+         |#.....#
+         |#######
+         |
+         |<vv<<^^<<^^
+         |""".stripMargin.split('\n').toList
+
+    val expected =
+      """
+        |##############
+        |##...[].##..##
+        |##...@.[]...##
+        |##....[]....##
+        |##..........##
+        |##..........##
+        |##############
+        |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
+
+    val result = process(parseExpandedInput(input), processLineForBigBoxes)
+
+    assert(result == parseInput(expected)._1)
+  }
+
+  it should "apply all instructions for big boxes: case 2" in {
+    val input =
+      """|##########
+         |#..O..O.O#
+         |#......O.#
+         |#.OO..O.O#
+         |#..O@..O.#
+         |#O#..O...#
+         |#O..O..O.#
+         |#.OO.O.OO#
+         |#....O...#
+         |##########
+         |
+         |<vv>^<v^>v>^vv^v>v<>v^v<v<^vv<<<^><<><>>v<vvv<>^v^>^<<<><<v<<<v^vv^v>^
+         |vvv<<^>^v^^><<>>><>^<<><^vv^^<>vvv<>><^^v>^>vv<>v<<<<v<^v>^<^^>>>^<v<v
+         |><>vv>v^v^<>><>>>><^^>vv>v<^^^>>v^v^<^^>v^^>v^<^v>v<>>v^v^<v>v^^<^^vv<
+         |<<v<^>>^^^^>>>v^<>vvv^><v<<<>^^^vv^<vvv>^>v<^^^^v<>^>vvvv><>>v^<<^^^^^
+         |^><^><>>><>^^<<^^v>>><^<v>^<vv>>v>>>^v><>^v><<<<v>>v<v<v>vvv>^<><<>^><
+         |^>><>^v<><^vvv<^^<><v<<<<<><^v<<<><<<^^<v<^^^><^>>^<v^><<<^>>^v<v^v<v^
+         |>^>>^v>vv>^<<^v<>><<><<v<<v><>v<^vv<<<>^^v^>^^>>><<^v>>v^v><^^>>^<>vv^
+         |<><^^>^^^<><vvvvv^v<v<<>^v<v>v<<^><<><<><<<^^<<<^<<>><<><^^^>^^<>^>v<>
+         |^^>vv<^v^v<vv>^<><v<^v>^^^>>>^^vvv^>vvv<>>>^<^>>>>>^<<^v>^vvv<>^<><<v>
+         |v^^>>><<^^<>>^v^<v^vv<>v^<<>^<^v^v><^<<<><<^<v><v<>vv>>v><v^<vv<>v^<<^
+         |""".stripMargin.split('\n').toList
+
+    val expected =
+      """
+        |####################
+        |##[].......[].[][]##
+        |##[]...........[].##
+        |##[]........[][][]##
+        |##[]......[]....[]##
+        |##..##......[]....##
+        |##..[]............##
+        |##..@......[].[][]##
+        |##......[][]..[]..##
+        |####################
+        |""".stripMargin.split('\n').toList.filterNot(_.isBlank)
+
+    val result = process(parseExpandedInput(input), processLineForBigBoxes)
+
+    assert(result.map(_.mkString) == parseInput(expected)._1.map(_.mkString))
+  }
+
 }

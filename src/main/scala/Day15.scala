@@ -1,5 +1,5 @@
 import Util.readFile
-import WarehouseWoes.{Coordinates, Warehouse, boxesSum, process, rearrange}
+import WarehouseWoes.{boxesSum, parseExpandedInput, parseInput, process, processLineForBigBoxes}
 
 import scala.annotation.tailrec
 
@@ -11,75 +11,109 @@ import scala.annotation.tailrec
 }
 
 object WarehouseWoes {
-  type Coordinates = (Int, Int)
-  type Warehouse = List[String]
+  private type Grid = List[List[Char]]
 
-  @tailrec
-  private def moveBox(xs: String, movedBoxes: Int = 0): Option[String] = xs.head match
-    case '#' => None
-    case '.' => Some(List.fill(movedBoxes)('O').mkString + xs.tail)
-    case 'O' => moveBox(xs.tail, movedBoxes + 1)
+  /**   - Current character;
+    *   - Previous character (will be used if the current one will move);
+    *   - Flag indicating if the character is moving.
+    */
+  private type MovingLine = (Char, Char, Boolean)
 
-  def rearrange(xs: String): String = {
-    val prefix = xs.takeWhile(_ != '@')
-    val rest = xs.drop(prefix.length + 1)
-    rest.head match
-      case '.' => prefix + ".@" + rest.drop(1)
-      case '#' => xs
-      case 'O' =>
-        moveBox(rest) match
-          case Some(suffix) => prefix + ".@" + suffix
-          case _            => xs
+  private type LineProcessor = (List[MovingLine], Char) => List[MovingLine]
+
+  def parseInput(input: List[String]): (Grid, List[Char]) = {
+    val map: Grid = input.takeWhile(!_.isBlank).map(_.toCharArray.toList)
+    val instructions: List[Char] = input.drop(map.length + 1).flatten.filter(Set('<', '^', '>', 'v').contains)
+    map -> instructions
   }
 
-  def transposeCoordinates(cs: Coordinates): Coordinates = cs.swap
+  def parseExpandedInput(input: List[String]): (Grid, List[Char]) = {
+    val (map, instructions) = parseInput(input)
 
-  @tailrec
-  def transpose(map: Warehouse, result: Warehouse = Nil): Warehouse = map.headOption.flatMap(_.headOption) match
-    case None => result
-    case x    => transpose(map.map(_.tail), result.appended(map.map(_.head).mkString))
-
-  def turnBack(map: Warehouse): Warehouse = (0 until 3).foldLeft(map) { case (m, _) => WarehouseWoes.transpose(m) }
-
-  def move(state: (Coordinates, Warehouse), instruction: Char): (Coordinates, Warehouse) = {
-    val (robot, map) = state
-
-    def handleHorizontalMove(isRightward: Boolean): (Coordinates, Warehouse) = {
-      val currentRow = map.drop(robot._2).head
-      val rearranged =
-        if (isRightward) rearrange(currentRow)
-        else rearrange(currentRow.reverse).reverse
-
-      // Here instead to getting the robot's coordinates (linear) we could pass it from the `rearrange` function.
-      (rearranged.indexOf('@') -> robot._2) -> (map.take(robot._2) ::: (rearranged :: map.drop(robot._2 + 1)))
+    val expandedMap = map.map {
+      _.flatMap {
+        case '#'   => "##"
+        case 'O'   => "[]"
+        case '.'   => ".."
+        case '@'   => "@."
+        case other => throw Exception(s"Invalid grid symbol: $other")
+      }
     }
 
-    def handleVerticalMove(isDownward: Boolean): (Coordinates, Warehouse) = {
-      val transposed = transpose(map)
-      val currentColumn = transposed.drop(robot._1).head
-      val rearranged =
-        if (isDownward) rearrange(currentColumn)
-        else rearrange(currentColumn.reverse).reverse
-      val resultTransposed = transposed.take(robot._1) ::: (rearranged :: transposed.drop(robot._1 + 1))
-
-      // Here instead of turning the whole map to the original orientation we could memorize that the orientation is
-      // transposed, and transpose all the instructions instead. That would save us up to 3n transpositions.
-      (robot._1 -> rearranged.indexOf('@')) -> turnBack(resultTransposed)
-    }
-
-    instruction match {
-      case '>' => handleHorizontalMove(isRightward = true)
-      case '<' => handleHorizontalMove(isRightward = false)
-      case 'v' => handleVerticalMove(isDownward = true)
-      case '^' => handleVerticalMove(isDownward = false)
-      case ch  => throw new IllegalArgumentException(s"Invalid instruction: $ch")
-    }
+    expandedMap -> instructions
   }
 
-  def process(robot: Coordinates, map: Warehouse, instructions: List[Char]): (Coordinates, Warehouse) =
-    instructions.foldLeft(robot -> map)(move)
+  def process(input: (Grid, List[Char]), processLine: LineProcessor = processLineIdentity): Grid = {
+    val (map: Grid, instructions: List[Char]) = input
+    instructions.foldLeft(map)(move(processLine))
+  }
 
-  def boxesSum(map: Warehouse): Int = (for {
+  def move(processLine: LineProcessor = processLineIdentity)(map: Grid, instruction: Char): Grid = instruction match {
+    case 'v' => moveDown(processLine)(map, 'v')
+    case '^' => moveDown(processLine)(map.reverse, '^').reverse
+    case '>' => moveDown(processLine)(map.transpose, '>').transpose
+    case '<' => moveDown(processLine)(map.transpose.reverse, '<').reverse.transpose
+    case ch  => throw new IllegalArgumentException(s"Invalid instruction: $ch")
+  }
+
+  private def moveDown(processLine: LineProcessor)(map: Grid, command: Char): Grid = {
+    val prefix = map.takeWhile(!_.contains('@'))
+    val movingLine = map.drop(prefix.length).head.map {
+      case '@' => ('@', '.', true)
+      case ch  => (ch, '.', false)
+    }
+    moveLineDown(processLine)(prefix, movingLine, map.drop(prefix.length + 1), command).getOrElse(map)
+  }
+
+  private def processLineIdentity(line: List[MovingLine], command: Char): List[MovingLine] = line
+
+  /** Moves the whole box if one side of it is moving. */
+  def processLineForBigBoxes(line: List[MovingLine], command: Char): List[MovingLine] =
+    command match
+      case '>' | '<' => line
+      case _ =>
+        line.head ::
+          line
+            .zip(line.tail)
+            .zip(line.tail.tail)
+            .map { case ((left, x), right) =>
+              if (left._1 == '[' && x._1 == ']' && !x._3 && left._3) (x._1, '.', true)
+              else if (x._1 == '[' && right._1 == ']' && !x._3 && right._3) (x._1, '.', true)
+              else x
+            }
+            .appended(line.last)
+
+  @tailrec
+  private def moveLineDown(
+      processLine: LineProcessor
+  )(prefix: Grid, line: List[MovingLine], suffix: Grid, command: Char): Option[Grid] = suffix match
+    case Nil => Some(prefix.appended(line.map(_._1)))
+    case s :: tail =>
+      val nextLines: List[Option[(Char, (Char, Char, Boolean))]] = line.zip(s).map {
+        case ((ch1, ch0, false), ch2) =>
+          // Character is not moving
+          Some(ch1, (ch2, ch1, false))
+        case ((ch1, ch0, true), '.') =>
+          // Found a free spot! Stop moving
+          Some(ch0, (ch1, '.', false))
+        case ((ch1, ch0, true), '#') =>
+          // Can't move
+          None
+        case ((ch1, ch0, true), ch2) =>
+          // Another moveable character, move everything
+          Some(ch0, (ch2, ch1, true))
+      }
+
+      if (nextLines.exists(_.isEmpty)) {
+        // Can't move
+        None
+      } else {
+        val movedLine = nextLines.flatMap(_.map(_._1))
+        val nextLine = processLine(nextLines.flatMap(_.map(_._2)), command)
+        moveLineDown(processLine)(prefix.appended(movedLine), nextLine, tail, command)
+      }
+
+  def boxesSum(map: Grid): Int = (for {
     (line, y) <- map.zipWithIndex
     (ch, x) <- line.zipWithIndex
     if ch == 'O' || ch == '['
@@ -87,16 +121,6 @@ object WarehouseWoes {
 }
 
 class WarehouseWoes(input: List[String]) {
-
-  val map: Warehouse = input.takeWhile(!_.isBlank)
-  val instructions: List[Char] = input.drop(map.length + 1).flatten.filter(Set('<', '^', '>', 'v').contains)
-
-  val robot: Coordinates = (for {
-    y <- map.indices
-    x <- map.head.indices
-    if map(y)(x) == '@'
-  } yield (x, y)).head
-
-  def solvePart1(): Any = boxesSum(process(robot, map, instructions)._2)
-  def solvePart2(): Any = ???
+  def solvePart1(): Any = boxesSum(process(parseInput(input)))
+  def solvePart2(): Any = boxesSum(process(parseExpandedInput(input), processLineForBigBoxes))
 }
