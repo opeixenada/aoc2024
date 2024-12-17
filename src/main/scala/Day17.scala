@@ -1,5 +1,5 @@
-import ChronospatialComputer.{Computer, bruteforceA}
-import Util.{readFile, withTimeLogging}
+import ChronospatialComputer.{Computer, findQuineA}
+import Util.readFile
 
 import scala.annotation.tailrec
 
@@ -62,14 +62,6 @@ object ChronospatialComputer {
     7 -> cdv
   )
 
-  @tailrec
-  def bruteforceA(c: Computer, a: BigInt): BigInt = {
-    if (c.a % 10000000 == 0) println(s"A: ${c.a}")
-    val newComputer = c.copy(a = a)
-    if (newComputer.outputsProgram()) a
-    else bruteforceA(newComputer, a + 1)
-  }
-
   case class Computer(
       program: Vector[Int],
       a: BigInt = 0,
@@ -78,20 +70,66 @@ object ChronospatialComputer {
       pointer: Int = 0,
       output: Vector[Int] = Vector.empty
   ) {
-    def startA: BigInt = (BigInt(1) << (3 * (program.length - 1))) - 1
-
     def getOutput: String = output.mkString(",")
 
     @tailrec
     final def exec(): Computer =
       if (pointer > (program.length - 2)) this
       else instructions(program(pointer))(this, program(pointer + 1)).exec()
+  }
 
-    @tailrec
-    final def outputsProgram(): Boolean =
-      if (!program.startsWith(output)) false
-      else if (pointer > (program.length - 2)) program == output
-      else instructions(program(pointer))(this, program(pointer + 1)).outputsProgram()
+  case class State(a: BigInt, n: Int, values: List[Int])
+
+  /** This function finds a value for register A that will make the computer output its own program. In other words, it
+    * finds input that creates a quine. See: [[https://en.wikipedia.org/wiki/Quine_(computing)]].
+    *
+    * It uses backtracking search to build up the value of A one 3-bit digit at a time. It works because each
+    * instruction in the output depends on exactly 3 bits of A (because there's `a = a/8` instruction in every cycle).
+    */
+  @tailrec
+  def findQuineA(
+      program: Vector[Int],
+      state: State = State(0, 1, (0 to 7).toList),
+      stack: List[State] = Nil
+  ): Option[BigInt] = {
+    // If we've matched all n elements of the program, we've found our answer
+    if (state.n > program.length) Some(state.a)
+    else
+      state.values match
+        case Nil =>
+          // If we run out of values to try at this level, backtrack to previous state
+          stack match
+            case Nil     => None // If no more states to try, we failed
+            case s :: ss => findQuineA(program, s, ss)
+
+        case i :: rest =>
+          // Build the next value of A by:
+          // 1. Shifting existing A left by 3 bits to make room for new digit
+          // 2. OR-ing with i to add the new 3-bit digit
+          // This is like building a base-8 number digit by digit from left to right
+          val nextA = (state.a << 3) | i
+
+          // Create a test computer with this A value
+          val computer = Computer(program = program, a = nextA)
+
+          // Run the computer and get its output
+          val output = computer.exec().output
+
+          // We're trying to match the rightmost n elements of the program
+          // This is because we're building the solution from left to right,
+          // but the program outputs instructions from right to left
+          val target = program.takeRight(state.n)
+
+          if (output == target)
+            // If this value of A produces the correct output for the rightmost n elements,
+            // try matching n+1 elements with new digits
+            // Save current state for backtracking
+            val nextState = State(nextA, state.n + 1, (0 to 7).toList)
+            val stackState = State(state.a, state.n, rest)
+            findQuineA(program, nextState, stackState :: stack)
+          else
+            // If this digit doesn't work, try the next value
+            findQuineA(program, State(state.a, state.n, rest), stack)
   }
 }
 
@@ -105,5 +143,5 @@ class ChronospatialComputer(input: List[String]) {
   private val state0: Computer = Computer(program, a, b, c)
 
   def solvePart1(): Any = state0.exec().getOutput
-  def solvePart2(): Any = withTimeLogging(bruteforceA(state0, state0.startA))
+  def solvePart2(): Any = findQuineA(program).get
 }
