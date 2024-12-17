@@ -140,8 +140,6 @@ class ChronospatialComputer(input: List[String]) {
   private val c = BigInt(input.drop(2).head.drop("Register C: ".length))
   private val program = input.drop(4).head.drop("Program: ".length).split(",").map(_.toInt).toVector
 
-  private val state0: Computer = Computer(program, a, b, c)
-
-  def solvePart1(): Any = state0.exec().getOutput
+  def solvePart1(): Any = Computer(program, a, b, c).exec().getOutput
   def solvePart2(): Any = findQuineA(program).get
 }
