@@ -1,5 +1,5 @@
 import ReindeerMaze.{Maze, Point, State, solve}
-import Util.{coordinatesOf, readFile}
+import Util.{coordinatesOf, readFile, withTimeLogging}
 
 import scala.annotation.tailrec
 
@@ -15,7 +15,7 @@ object ReindeerMaze {
   private type DirectedPoint = (Point, Char)
   private type Path = Set[Point]
 
-  private val allDirections : List[Char] = List('v', '^', '<', '>')
+  private val allDirections: List[Char] = List('v', '^', '<', '>')
 
   private val up: Point => DirectedPoint = p => (p._1, p._2 - 1) -> '^'
   private val down: Point => DirectedPoint = p => (p._1, p._2 + 1) -> 'v'
@@ -62,7 +62,6 @@ object ReindeerMaze {
     case state :: tail =>
       val currentScore = scores(state.point -> state.direction)
       val newScore = Math.min(currentScore, state.pathScore)
-      val updatedScores = scores + (state.point -> state.direction -> newScore)
 
       () match
         case _ if currentScore < state.pathScore =>
@@ -71,19 +70,19 @@ object ReindeerMaze {
         case _ if state.point == maze.end =>
           solve(maze)(
             states = tail.filter(_.pathScore <= newScore),
-            scores = updatedScores,
+            scores = scores + (state.point -> state.direction -> newScore),
             paths = paths + (state.path -> state.pathScore)
           )
 
         case _ =>
           solve(maze)(
-            states = (tail ::: state.next(maze)).filter(s => s.pathScore <= updatedScores(s.point -> s.direction)),
-            scores = updatedScores,
+            states = tail ::: state.next(maze),
+            scores = scores + (state.point -> state.direction -> newScore),
             paths = paths
           )
 
     case Nil =>
-      val finalScore = allDirections .map(d => scores(maze.end -> d)).min
+      val finalScore = allDirections.map(d => scores(maze.end -> d)).min
       finalScore -> paths.filter(_._2 == finalScore).flatMap(_._1)
 }
 
@@ -97,7 +96,9 @@ class ReindeerMaze(input: List[String]) {
   private val state0 = State(start, '>', Set(start))
 
   private val (score, path) =
-    solve(maze)(List(state0), Map(state0.point -> state0.direction -> 0).withDefaultValue(Int.MaxValue))
+    withTimeLogging(
+      solve(maze)(List(state0), Map(state0.point -> state0.direction -> 0).withDefaultValue(Int.MaxValue))
+    )
 
   def solvePart1(): Any = score
   def solvePart2(): Any = path.size
