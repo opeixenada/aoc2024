@@ -1,4 +1,4 @@
-import RAMRun.{State, findPath, h, w}
+import RAMRun.{State, findCutoffByte, minScore, n}
 import Util.{Point, readFile}
 
 import scala.annotation.tailrec
@@ -12,49 +12,66 @@ import scala.annotation.tailrec
 
 object RAMRun {
 
-  val w: Int = 6
-  val h: Int = 6
+  val n: Int = 1024
+  private val side: Int = 71
+  private val end: Point = (side - 1, side - 1)
 
-  def inBounds(p: Point): Boolean = p._1 > -1 && p._1 < w && p._2 > -1 && p._2 < h
+  private val field: Set[Point] = (for {
+    x <- 0 until side
+    y <- 0 until side
+  } yield (x, y)).toSet
+
+  def inBounds(p: Point): Boolean = p._1 > -1 && p._1 < side && p._2 > -1 && p._2 < side
 
   val directions: List[(Int, Int)] = List((0, 1), (0, -1), (1, 0), (-1, 0))
 
   case class State(
-      bytes: List[Point],
-      corrupt: Set[Point] = Set.empty,
+      corrupt: Set[Point],
       point: Point = (0, 0),
-      seen: Set[Point] = Set((0, 0))
+      seen: Set[Point] = Set((0, 0)),
+      score: Int = 0,
+      possiblePoints: Set[Point] = field
   ) {
+    private def isTerminal: Boolean = point == end
 
-    def score: Int = seen.size
-
-    def isTerminal: Boolean = point == (w - 1, h - 1)
-
-    def next: List[State] = {
-      val (newCorrupt, newBytes) = bytes match
-        case b :: bs => (corrupt + b, bs)
-        case _       => (corrupt, bytes)
-
-      directions
-        .map { d =>
-          (point._1 + d._1) -> (point._2 + d._2)
-        }
-        .filter { p =>
-          inBounds(p) && !newCorrupt.contains(p) && !seen.contains(p)
-        }
-        .map { p =>
-          State(newBytes, newCorrupt, p, seen + p)
-        }
-    }
+    def next: List[State] =
+      if (isTerminal) Nil
+      else
+        directions
+          .map { d =>
+            (point._1 + d._1) -> (point._2 + d._2)
+          }
+          .filter { p =>
+            inBounds(p) && possiblePoints.contains(p) && !corrupt.contains(p) && !seen.contains(p)
+          }
+          .map { p =>
+            State(corrupt, p, seen + p, score + 1)
+          }
   }
 
   @tailrec
-  def findPath(stack: List[State], x: Option[Int] = None): Option[Int] = stack match
-    case Nil => x
-    case s :: ss if s.isTerminal =>
-      val newScore = x.foldLeft(s.score)(Math.min)
-      findPath(ss.filter(_.score < newScore), Some(newScore))
-    case s :: ss => findPath(s.next ::: ss, x)
+  def findCutoffByte(bytes: List[Point], accBytes: Set[Point] = Set.empty, pathPoints: Set[Point] = field): Point =
+    bytes match
+      case Nil => throw Exception("Cutoff byte not found")
+      case byte :: tail =>
+        val newPathPoints = allReachable(List(State(corrupt = accBytes + byte, possiblePoints = pathPoints)))
+        if (!newPathPoints.contains(end)) byte
+        else findCutoffByte(tail, accBytes + byte, newPathPoints)
+
+  @tailrec
+  private def allReachable(stack: List[State], acc: Set[Point] = Set.empty): Set[Point] =
+    stack match
+      case Nil                              => acc
+      case s :: ss if acc.contains(s.point) => allReachable(ss, acc)
+      case s :: ss                          => allReachable(ss ::: s.next, acc + s.point)
+
+  @tailrec
+  def minScore(stack: List[State], scores: Map[Point, Int] = Map.empty): Option[Int] = stack match
+    case Nil                                                 => scores.get(end)
+    case s :: ss if scores.get(s.point).exists(_ <= s.score) => minScore(ss, scores)
+    case s :: ss =>
+      val newScore = scores.get(s.point).foldLeft(s.score)(Math.min)
+      minScore(ss ::: s.next, scores + (s.point -> newScore))
 }
 
 class RAMRun(input: List[String]) {
@@ -63,6 +80,9 @@ class RAMRun(input: List[String]) {
     ns.head -> ns.tail.head
   }
 
-  def solvePart1(): Any = findPath(List(State(bytes.take(1024)))).get
-  def solvePart2(): Any = ???
+  def solvePart1(): Any = minScore(List(State(bytes.take(n).toSet))).get
+  def solvePart2(): Any = {
+    val byte = findCutoffByte(bytes.drop(n), accBytes = bytes.take(n).toSet)
+    s"${byte._1},${byte._2}"
+  }
 }
