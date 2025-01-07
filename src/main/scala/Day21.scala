@@ -1,4 +1,3 @@
-import KeypadConundrum.{findMySequenceLength, numericPart}
 import Util.readFile
 
 import scala.annotation.tailrec
@@ -11,11 +10,26 @@ import scala.collection.mutable
   println(solver.solvePart2())
 }
 
-object KeypadConundrum {
+class KeypadConundrum(input: List[String]) {
+  import KeypadConundrum._
 
+  def solvePart1(): Any = solve(2)
+  def solvePart2(): Any = solve(25)
+
+  private def solve(depth: Int): BigInt = input.map { code =>
+    findHumanSequenceLength(depth)(code) * numericPart(code)
+  }.sum
+}
+
+object KeypadConundrum {
   private type Keypad = Map[Char, List[(Char, Char)]]
 
-  private val numericKeypad: Map[Char, List[(Char, Char)]] = Map(
+  private val memoryExpanded: mutable.Map[Fragment, List[List[Fragment]]] = mutable.Map.empty
+  private val memoryReduced: mutable.Map[Fragment, BigInt] = mutable.Map.empty
+
+  private case class Fragment(a: Char, b: Char, d: Int)
+
+  private val numericKeypad: Keypad = Map(
     '7' -> List('>' -> '8', 'v' -> '4'),
     '8' -> List('<' -> '7', '>' -> '9', 'v' -> '5'),
     '9' -> List('<' -> '8', 'v' -> '6'),
@@ -29,7 +43,7 @@ object KeypadConundrum {
     'A' -> List('<' -> '0', '^' -> '3')
   )
 
-  private val directionalKeypad: Map[Char, List[(Char, Char)]] = Map(
+  private val directionalKeypad: Keypad = Map(
     '^' -> List('>' -> 'A', 'v' -> 'v'),
     'A' -> List('<' -> '^', 'v' -> '>'),
     '<' -> List('>' -> 'v'),
@@ -37,17 +51,16 @@ object KeypadConundrum {
     '>' -> List('^' -> 'A', '<' -> 'v')
   )
 
-  private val shortestPathsDirectional: Map[(Char, Char), List[String]] = {
-    val xs = for {
-      a <- directionalKeypad.keys
-      b <- directionalKeypad.keys
-    } yield (a -> b) -> findShortestPaths(directionalKeypad)(a, b)
+  /** Pre-computed shortest paths for the directional keypad
+    */
+  private val shortestPathsDirectional: Map[(Char, Char), List[String]] = (for {
+    a <- directionalKeypad.keys
+    b <- directionalKeypad.keys
+  } yield (a -> b) -> findShortestPaths(directionalKeypad)(a, b)).toMap
 
-    xs.toMap
-  }
-
+  /** Finds all shortest paths between two points on a keypad
+    */
   private def findShortestPaths(keypad: Keypad)(a: Char, b: Char): List[String] = {
-
     @tailrec
     def findShortestPathsRec(acc: Map[(Char, Char), List[String]]): List[String] = acc.get(a -> b) match
       case Some(paths) => paths
@@ -60,47 +73,26 @@ object KeypadConundrum {
 
         findShortestPathsRec(nextIteration.groupBy(_._1).view.mapValues(_.map(_._2)).toMap)
 
-    val initMap = for {
-      (key, xs) <- keypad.filter(_._1 == a)
-      (char, otherKey) <- xs
-    } yield (key -> otherKey) -> List(s"$char")
-
     if (a == b) List("")
-    else findShortestPathsRec(initMap)
-  }
+    else {
+      val initMap = for {
+        (key, xs) <- keypad.filter(_._1 == a)
+        (char, otherKey) <- xs
+      } yield (key -> otherKey) -> List(s"$char")
 
-  def findSequencesForNumericKeypad(s: String): List[String] = s
-    .foldLeft(('A', List(""))) { case ((currentButton, acc), nextButton) =>
-      val newPathSegments = for {
-        segment <- findShortestPaths(numericKeypad)(currentButton, nextButton)
-        path <- acc
-      } yield path + segment.appended('A')
-
-      nextButton -> newPathSegments
+      findShortestPathsRec(initMap)
     }
-    ._2
-    .map(_.mkString)
-
-  def findMySequenceLength(directionalKeypadsThatRobotsAreUsing: Int)(s: String): BigInt = (for {
-    numericSequence <- findSequencesForNumericKeypad(s)
-    ys = expand(s = numericSequence, depth = directionalKeypadsThatRobotsAreUsing)
-  } yield ys).min
-
-  private case class Fragment(a: Char, b: Char, d: Int)
+  }
 
   def expand(s: String, depth: Int): BigInt = {
     val initialFragments = ("A" + s).zip(s).toList.map { case (a, b) => Fragment(a, b, depth) }
     processFragments(initialFragments)
-    initialFragments.map(memory2.apply).sum
+    initialFragments.map(memoryReduced.apply).sum
   }
 
-  private val memory1: mutable.Map[Fragment, List[List[Fragment]]] = mutable.Map.empty
-  private val memory2: mutable.Map[Fragment, BigInt] = mutable.Map.empty
-
-  private def expandMemory(f: Fragment, fs: List[List[Fragment]]): Unit = {
-    if (fs.forall(_.forall(memory2.contains))) reduceMemory(f, fs.map(_.map(memory2.apply).sum).min)
-    else memory1.addOne(f -> fs)
-  }
+  private def expandMemory(f: Fragment, fs: List[List[Fragment]]): Unit =
+    if (fs.forall(_.forall(memoryReduced.contains))) reduceMemory(f, fs.map(_.map(memoryReduced.apply).sum).min)
+    else memoryExpanded.addOne(f -> fs)
 
   private def reduceMemory(f: Fragment, v: BigInt): Unit = reduceMemoryRec(List(f -> v))
 
@@ -108,41 +100,48 @@ object KeypadConundrum {
   private def reduceMemoryRec(xs: List[(Fragment, BigInt)]): Unit = xs match
     case Nil => ()
     case (f, v) :: tail =>
-      memory2.addOne(f -> v)
-      memory1.filter(_._2.flatten.contains(f)).find { case (f2, v2) => v2.forall(_.forall(memory2.contains)) } match
+      memoryReduced.addOne(f -> v)
+      memoryExpanded.filter(_._2.flatten.contains(f)).find { case (f2, v2) =>
+        v2.forall(_.forall(memoryReduced.contains))
+      } match
         case None => reduceMemoryRec(tail)
         case Some((f2, v2)) =>
-          memory1.remove(f2)
-          reduceMemoryRec((f2 -> v2.map(_.map(memory2.apply).sum).min) :: tail)
+          memoryExpanded.remove(f2)
+          reduceMemoryRec((f2 -> v2.map(_.map(memoryReduced.apply).sum).min) :: tail)
 
   @tailrec
-  private def processFragments(fragments: List[Fragment]): Unit = fragments match
+  private def processFragments(fs: List[Fragment]): Unit = fs match
     case Nil => ()
     case f :: fs if f.d == 0 =>
       reduceMemory(f, 1)
       processFragments(fs)
     case f :: fs =>
-      memory2.get(f) match
-        case Some(hit) =>
-          processFragments(fs)
+      memoryReduced.get(f) match {
+        case Some(_) => processFragments(fs)
         case _ =>
           val paths = shortestPathsDirectional(f.a, f.b).map(_ + "A")
-          val newFragments: List[List[Fragment]] = paths.map { path =>
+          val newFragments = paths.map { path =>
             ("A" + path).zip(path).map { case (a, b) => Fragment(a, b, f.d - 1) }.toList
           }
           expandMemory(f, newFragments)
           processFragments(newFragments.flatten ::: fs)
+      }
 
-  def numericPart(s: String): Int = s.takeWhile(_.isDigit).toInt
-}
+  def findSequencesForNumericKeypad(s: String): List[String] = s
+    .foldLeft(('A', List(""))) { case ((currentButton, acc), nextButton) =>
+      val newPathSegments = for {
+        segment <- findShortestPaths(numericKeypad)(currentButton, nextButton)
+        path <- acc
+      } yield path + segment.appended('A')
+      nextButton -> newPathSegments
+    }
+    ._2
+    .map(_.mkString)
 
-class KeypadConundrum(input: List[String]) {
+  def findHumanSequenceLength(depth: Int)(s: String): BigInt = (for {
+    numericSequence <- findSequencesForNumericKeypad(s)
+    result = expand(s = numericSequence, depth = depth)
+  } yield result).min
 
-  def solvePart1(): Any = input.map { code =>
-    findMySequenceLength(2)(code) * numericPart(code)
-  }.sum
-
-  def solvePart2(): Any = input.map { code =>
-    findMySequenceLength(25)(code) * numericPart(code)
-  }.sum
+  private def numericPart(s: String): Int = s.takeWhile(_.isDigit).toInt
 }
